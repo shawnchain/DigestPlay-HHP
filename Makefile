@@ -52,7 +52,7 @@ install:
 
 clean:
 	rm -f $(PREREQUISITES) $(OBJECTS) digestplay
-	rm -f *.d $(TOOLKIT)/*/*.d
+#	rm -f *.d $(TOOLKIT)/*/*.d
 
 version:
 	echo "#define VERSION $(shell date -u +%Y%m%d)" > Version.h
