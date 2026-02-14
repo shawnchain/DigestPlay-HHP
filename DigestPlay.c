@@ -5,7 +5,25 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <sys/time.h>
+#ifndef __MACH__
 #include <sys/timerfd.h>
+#else
+#include <mach/mach.h>
+#include <machine/endian.h>
+
+#define htobe16(value)  OSSwapHostToBigInt16(value)
+#define be16toh(value)  OSSwapBigToHostInt16(value)
+#define htobe32(value)  OSSwapHostToBigInt32(value)
+#define be32toh(value)  OSSwapBigToHostInt32(value)
+
+#define htole16(value)  OSSwapHostToLittleInt16(value)
+#define le16toh(value)  OSSwapLittleToHostInt16(value)
+#define htole32(value)  OSSwapHostToLittleInt32(value)
+#define le32toh(value)  OSSwapLittleToHostInt32(value)
+
+#define __bswap_16(value)  OSSwapConstInt16(value)
+#define __bswap_32(value)  OSSwapConstInt32(value)
+#endif
 
 #include "Version.h"
 #include "RewindClient.h"
@@ -226,6 +244,7 @@ int main(int argc, char* argv[])
 
   // Initialize timer handle
 
+#ifndef __MACH__
   int handle;
   struct itimerspec interval;
 
@@ -237,6 +256,7 @@ int main(int argc, char* argv[])
 
   handle = timerfd_create(CLOCK_MONOTONIC, 0);
   timerfd_settime(handle, 0, &interval, NULL);
+#endif
 
   // Transmit voice header
 
@@ -250,12 +270,44 @@ int main(int argc, char* argv[])
   size_t count = 0;
 
   uint8_t* pointer;
-  uint8_t* limit = buffer + 3 * size;
+  uint8_t* limit = (uint8_t *)buffer + 3 * size;
 
-  // Wait for timer event (60 milliseconds)
-  while (read(handle, &mark, sizeof(uint64_t)) > 0)
+#ifdef __MACH__
+  struct timespec delay;
+  struct timeval start;
+  struct timeval next;
+  struct timeval now;
+  struct timeval timeout;
+
+  gettimeofday(&start, NULL);
+  next = start;
+#endif
+
+  while (1)
   {
-    pointer = buffer;
+#ifndef __MACH__
+    // Wait for timer event (60 milliseconds)
+    if (read(handle, &mark, sizeof(uint64_t)) <= 0)
+      break;
+#else
+    next.tv_usec += TDMA_FRAME_DURATION * 1000;
+    while (next.tv_usec >= 1000000)
+    {
+      next.tv_usec -= 1000000;
+      next.tv_sec ++;
+    }
+
+    gettimeofday(&now, NULL);
+    timersub(&next, &now, &timeout);
+
+    if (timeout.tv_sec >= 0)
+    {
+      delay.tv_sec  = timeout.tv_sec;
+      delay.tv_nsec = timeout.tv_usec * 1000;
+      nanosleep(&delay, NULL);
+    }
+#endif
+    pointer = (uint8_t *)buffer;
     while ((pointer < limit) &&
            (read(STDIN_FILENO, pointer, size) == size))
     {
@@ -268,7 +320,7 @@ int main(int argc, char* argv[])
       break;
     }
 
-    printf("[> %d <]\r", count);
+    printf("[> %zu <]\r", count);
     fflush(stdout);
 
     switch (size)
@@ -301,7 +353,9 @@ int main(int argc, char* argv[])
 
   // Clean up
 
+#ifndef __MACH__
   close(handle);
+#endif
   TransmitRewindClose(context);
   ReleaseRewindContext(context);
 

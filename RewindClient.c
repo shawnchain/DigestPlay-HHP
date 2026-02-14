@@ -49,6 +49,8 @@
 
 #define __bswap_16(value)  OSSwapConstInt16(value)
 #define __bswap_32(value)  OSSwapConstInt32(value)
+
+#define __in6_u  __u6_addr
 #endif
 
 #define BUFFER_SIZE    256
@@ -265,7 +267,7 @@ int ConnectRewindClient(struct RewindContext* context, const char* location, con
         if (attempt < ATTEMPT_COUNT)
         {
           length -= sizeof(struct RewindData);
-          length += sprintf(buffer->data + length, "%s", password);
+          length += sprintf((char *)(buffer->data + length), "%s", password);
           SHA256(buffer->data, length, digest);
           TransmitRewindData(context, REWIND_TYPE_AUTHENTICATION, REWIND_FLAG_NONE, digest, SHA256_DIGEST_LENGTH);
           attempt ++;
